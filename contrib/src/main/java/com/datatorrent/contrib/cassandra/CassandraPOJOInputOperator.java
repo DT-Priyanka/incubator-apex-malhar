@@ -195,8 +195,9 @@ public class CassandraPOJOInputOperator extends AbstractCassandraInputOperator<O
   public void setup(OperatorContext context)
   {
     super.setup(context);
-    if(startRow != null) {
-      startRowToken = fetchKeyTokenFromDB(startRow);
+    Long keyToken;
+    if ((keyToken = fetchKeyTokenFromDB(startRow)) != null) {
+      startRowToken = keyToken;
     }
     TOKEN_QUERY = "select token(" + primaryKeyColumn + ") from " + store.keyspace + "." + tablename + " where " + primaryKeyColumn + " =  ?";
   }
