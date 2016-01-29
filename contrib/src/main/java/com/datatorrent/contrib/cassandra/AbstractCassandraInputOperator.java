@@ -19,16 +19,16 @@
 package com.datatorrent.contrib.cassandra;
 
 
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datatorrent.lib.db.AbstractStoreInputOperator;
-
 import com.datatorrent.api.DefaultOutputPort;
-
 import com.datatorrent.netlet.util.DTThrowable;
 
 /**
@@ -105,7 +105,10 @@ public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInp
     logger.debug("select statement: {}", query);
 
     try {
-      ResultSet result = store.getSession().execute(query);
+      SimpleStatement stmt = new SimpleStatement(query);
+      stmt.setConsistencyLevel(ConsistencyLevel.ALL);
+
+      ResultSet result = store.getSession().execute(stmt);
       if (!result.isExhausted()) {
         for (Row row : result) {
           T tuple = getTuple(row);

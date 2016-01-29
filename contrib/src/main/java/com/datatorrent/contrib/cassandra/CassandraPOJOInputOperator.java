@@ -146,7 +146,7 @@ public class CassandraPOJOInputOperator extends AbstractCassandraInputOperator<O
 
   public void setQuery(String query)
   {
-    this.query = query.replace("%t", tablename);
+    this.query = query;
   }
 
   /**
@@ -208,6 +208,7 @@ public class CassandraPOJOInputOperator extends AbstractCassandraInputOperator<O
     com.datastax.driver.core.ResultSet rs = store.getSession().execute("select * from " + store.keyspace + "." + tablename + " LIMIT " + 1);
     ColumnDefinitions rsMetaData = rs.getColumnDefinitions();
 
+    this.query = query.replace("%t", tablename);
     primaryKeyColumnType = rsMetaData.getType(primaryKeyColumn);
     if (query.contains("%p")) {
       query = query.replace("%p", primaryKeyColumn);
