@@ -47,9 +47,9 @@ import com.datatorrent.netlet.util.DTThrowable;
 public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInputOperator<T, CassandraStore> {
 
   private static final Logger logger = LoggerFactory.getLogger(AbstractCassandraInputOperator.class);
-  private PagingState pagingState;
+  private PagingState nextPageState;
   @Min(1)
-  private int limit = 10;
+  private int limit = 100;
   int waitForDataTimeout = 100;
 
   /**
@@ -109,17 +109,22 @@ public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInp
 
     SimpleStatement stmt = new SimpleStatement(query);
     stmt.setFetchSize(limit);
-    if (pagingState != null) {
-      stmt.setPagingState(pagingState);
+    if (nextPageState != null) {
+      stmt.setPagingState(nextPageState);
     }
 
     try {
       ResultSet result = store.getSession().execute(stmt);
-      pagingState = result.getExecutionInfo().getPagingState();
+      nextPageState = result.getExecutionInfo().getPagingState();
+
+      int remaining = result.getAvailableWithoutFetching();
       if (!result.isExhausted()) {
         for (Row row : result) {
           T tuple = getTuple(row);
           emit(tuple);
+          if (--remaining == 0) {
+            break;
+          }
         }
       } else {
         // No rows available wait for some time before retrying so as to not continuously slam the database
@@ -138,7 +143,7 @@ public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInp
   }
 
   /*
-   * Number of records to be fetched in one time from cassandra table.
+   * Number of records to be fetched at one time from cassandra table.
    */
   public int getLimit()
   {

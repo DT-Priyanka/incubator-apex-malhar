@@ -346,7 +346,7 @@ public class CassandraOperatorTest
     sink.clear();
     inputOperator.columnDataTypes.clear();
 
-    String query3 = "SELECT * FROM " + KEYSPACE + "." + "%t where token(%p) > %v LIMIT %l;";
+    String query3 = "SELECT * FROM " + KEYSPACE + "." + "%t where token(%p) > %v;";
     inputOperator.setQuery(query3);
     inputOperator.setStartRow(1);
     inputOperator.setup(context);
