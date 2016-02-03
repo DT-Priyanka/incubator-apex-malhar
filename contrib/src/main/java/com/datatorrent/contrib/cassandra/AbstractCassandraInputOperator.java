@@ -19,16 +19,17 @@
 package com.datatorrent.contrib.cassandra;
 
 
-import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.SimpleStatement;
+import javax.validation.constraints.Min;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.datatorrent.lib.db.AbstractStoreInputOperator;
+import com.datastax.driver.core.PagingState;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
+import com.datastax.driver.core.SimpleStatement;
 import com.datatorrent.api.DefaultOutputPort;
+import com.datatorrent.lib.db.AbstractStoreInputOperator;
 import com.datatorrent.netlet.util.DTThrowable;
 
 /**
@@ -46,7 +47,9 @@ import com.datatorrent.netlet.util.DTThrowable;
 public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInputOperator<T, CassandraStore> {
 
   private static final Logger logger = LoggerFactory.getLogger(AbstractCassandraInputOperator.class);
-
+  private PagingState pagingState;
+  @Min(1)
+  private int limit = 10;
   int waitForDataTimeout = 100;
 
   /**
@@ -104,11 +107,15 @@ public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInp
     String query = queryToRetrieveData();
     logger.debug("select statement: {}", query);
 
-    try {
-      SimpleStatement stmt = new SimpleStatement(query);
-      stmt.setConsistencyLevel(ConsistencyLevel.ALL);
+    SimpleStatement stmt = new SimpleStatement(query);
+    stmt.setFetchSize(limit);
+    if (pagingState != null) {
+      stmt.setPagingState(pagingState);
+    }
 
+    try {
       ResultSet result = store.getSession().execute(stmt);
+      pagingState = result.getExecutionInfo().getPagingState();
       if (!result.isExhausted()) {
         for (Row row : result) {
           T tuple = getTuple(row);
@@ -118,15 +125,28 @@ public abstract class AbstractCassandraInputOperator<T> extends AbstractStoreInp
         // No rows available wait for some time before retrying so as to not continuously slam the database
         Thread.sleep(waitForDataTimeout);
       }
-    }
-    catch (Exception ex) {
+    } catch (Exception ex) {
       store.disconnect();
       DTThrowable.rethrow(ex);
     }
+
   }
 
   protected void emit(T tuple)
   {
     outputPort.emit(tuple);
+  }
+
+  /*
+   * Number of records to be fetched in one time from cassandra table.
+   */
+  public int getLimit()
+  {
+    return limit;
+  }
+
+  public void setLimit(int limit)
+  {
+    this.limit = limit;
   }
 }
