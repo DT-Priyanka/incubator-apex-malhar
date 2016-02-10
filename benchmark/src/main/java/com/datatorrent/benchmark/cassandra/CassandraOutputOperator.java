@@ -48,4 +48,9 @@ public class CassandraOutputOperator extends  AbstractCassandraTransactionableOu
     return boundStmnt.bind(id++,tuple);
   }
 
+  @Override
+  public void deactivate()
+  {
+  }
+
 }
