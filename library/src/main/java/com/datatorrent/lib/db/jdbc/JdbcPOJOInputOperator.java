@@ -44,6 +44,8 @@ import com.datatorrent.api.Context;
 import com.datatorrent.api.DefaultOutputPort;
 import com.datatorrent.api.Operator;
 import com.datatorrent.api.annotation.OutputPortFieldAnnotation;
+import com.datatorrent.lib.bandwidth.BandwidthLimitingOperator;
+import com.datatorrent.lib.bandwidth.BandwidthManager;
 import com.datatorrent.lib.util.FieldInfo;
 import com.datatorrent.lib.util.PojoUtils;
 
@@ -66,7 +68,7 @@ import com.datatorrent.lib.util.PojoUtils;
  */
 @org.apache.hadoop.classification.InterfaceStability.Evolving
 public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
-    implements Operator.ActivationListener<Context.OperatorContext>
+    implements Operator.ActivationListener<Context.OperatorContext>, BandwidthLimitingOperator
 {
   private static int DEF_FETCH_SIZE = 100;
 
@@ -78,6 +80,8 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
   private String orderByExpr;
   private String query;
   private boolean mysqlSyntax;
+  private int lastTupleSize;
+  private BandwidthManager bandwidthManager;
 
   @NotNull
   private List<FieldInfo> fieldInfos;
@@ -116,6 +120,7 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
     fetchSize = DEF_FETCH_SIZE;
     columnFieldSetters = Lists.newArrayList();
     mysqlSyntax = true;
+    bandwidthManager = new BandwidthManager();
   }
 
   @Override
@@ -150,6 +155,7 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
     for (FieldInfo fi : fieldInfos) {
       columnFieldSetters.add(new ActiveFieldInfo(fi));
     }
+    bandwidthManager.setup(context);
   }
 
   protected void populateColumnDataTypes() throws SQLException
@@ -194,8 +200,9 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
   @Override
   public void emitTuples()
   {
-    if (!windowDone) {
+    if (!windowDone && !bandwidthManager.canConsumeBandwidth()) {
       try {
+        int usedBandwdith = 0;
         setRuntimeParams();
         ResultSet resultSet = preparedStatement.executeQuery();
         if (resultSet.next()) {
@@ -203,8 +210,10 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
             Object tuple = getTuple(resultSet);
             outputPort.emit(tuple);
             tuplesRead++;
+            usedBandwdith += lastTupleSize;
           }
           while (resultSet.next());
+          bandwidthManager.consumeBandwidth(usedBandwdith);
         } else {
           windowDone = true;
         }
@@ -230,6 +239,7 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
   @Override
   public Object getTuple(ResultSet result)
   {
+    lastTupleSize = 0;
     Object obj;
     try {
       obj = pojoClass.newInstance();
@@ -248,61 +258,73 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
           case Types.VARCHAR:
             String strVal = result.getString(i + 1);
             ((PojoUtils.Setter<Object, String>)afi.setterOrGetter).set(obj, strVal);
+            lastTupleSize +=strVal.length();
             break;
 
           case Types.BOOLEAN:
             boolean boolVal = result.getBoolean(i + 1);
             ((PojoUtils.SetterBoolean<Object>)afi.setterOrGetter).set(obj, boolVal);
+            lastTupleSize += 1;
             break;
 
           case Types.TINYINT:
             byte byteVal = result.getByte(i + 1);
             ((PojoUtils.SetterByte<Object>)afi.setterOrGetter).set(obj, byteVal);
+            lastTupleSize += 1;
             break;
 
           case Types.SMALLINT:
             short shortVal = result.getShort(i + 1);
             ((PojoUtils.SetterShort<Object>)afi.setterOrGetter).set(obj, shortVal);
+            lastTupleSize += 2;
             break;
 
           case Types.INTEGER:
             int intVal = result.getInt(i + 1);
             ((PojoUtils.SetterInt<Object>)afi.setterOrGetter).set(obj, intVal);
+            lastTupleSize += 4;
             break;
 
           case Types.BIGINT:
             long longVal = result.getLong(i + 1);
             ((PojoUtils.SetterLong<Object>)afi.setterOrGetter).set(obj, longVal);
+            lastTupleSize += 8;
             break;
 
           case Types.FLOAT:
             float floatVal = result.getFloat(i + 1);
             ((PojoUtils.SetterFloat<Object>)afi.setterOrGetter).set(obj, floatVal);
+            lastTupleSize += 8;
             break;
 
           case Types.DOUBLE:
             double doubleVal = result.getDouble(i + 1);
             ((PojoUtils.SetterDouble<Object>)afi.setterOrGetter).set(obj, doubleVal);
+            lastTupleSize += 8;
             break;
 
           case Types.DECIMAL:
             BigDecimal bdVal = result.getBigDecimal(i + 1);
             ((PojoUtils.Setter<Object, BigDecimal>)afi.setterOrGetter).set(obj, bdVal);
+            lastTupleSize += 8;
             break;
 
           case Types.TIMESTAMP:
             Timestamp tsVal = result.getTimestamp(i + 1);
             ((PojoUtils.SetterLong<Object>)afi.setterOrGetter).set(obj, tsVal.getTime());
+            lastTupleSize += tsVal.toString().length();
             break;
 
           case Types.TIME:
             Time timeVal = result.getTime(i + 1);
             ((PojoUtils.SetterLong<Object>)afi.setterOrGetter).set(obj, timeVal.getTime());
+            lastTupleSize += timeVal.toString().length();
             break;
 
           case Types.DATE:
             Date dateVal = result.getDate(i + 1);
             ((PojoUtils.SetterLong<Object>)afi.setterOrGetter).set(obj, dateVal.getTime());
+            lastTupleSize += dateVal.toString().length();
             break;
 
           default:
@@ -637,4 +659,10 @@ public class JdbcPOJOInputOperator extends AbstractJdbcInputOperator<Object>
   }
 
   public static final Logger LOG = LoggerFactory.getLogger(JdbcPOJOInputOperator.class);
+
+  @Override
+  public BandwidthManager getBandwidthManager()
+  {
+    return bandwidthManager;
+  }
 }
