@@ -193,12 +193,13 @@ public class FileSplitterInput extends AbstractFileSplitter implements InputOper
 
   protected void updateReferenceTimes(ScannedFileInfo fileInfo)
   {
-    Map<String, Long> referenceTimePerInputDir;
-    if ((referenceTimePerInputDir = referenceTimes.get(fileInfo.getDirectoryPath())) == null) {
-      referenceTimePerInputDir = Maps.newHashMap();
+    Map<String, Long> referenceTimePerInput;
+    if ((referenceTimePerInput = referenceTimes.get(fileInfo.getDirectoryPath())) == null) {
+      referenceTimePerInput = Maps.newHashMap();
     }
-    referenceTimePerInputDir.put(fileInfo.getFilePath(), fileInfo.modifiedTime);
-    referenceTimes.put(fileInfo.getDirectoryPath(), referenceTimePerInputDir);
+    referenceTimePerInput.put(fileInfo.getFilePath(), fileInfo.modifiedTime);
+    String referenceKey = fileInfo.getDirectoryPath() == null ? fileInfo.getFilePath() : fileInfo.getDirectoryPath();
+    referenceTimes.put(referenceKey, referenceTimePerInput);
   }
 
   @Override
