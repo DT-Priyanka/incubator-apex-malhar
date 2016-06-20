@@ -1,6 +1,7 @@
 package com.datatorrent.contrib.kafka;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -25,7 +26,7 @@ public class KafkaInputOperator extends AbstractKafkaInputOperator<KafkaConsumer
   private transient KafkaConsumer.KafkaMessage pendingMessage;
   private transient int emitCount = 0;
   private transient long emitTotalMsgSize = 0;
-  public final transient DefaultOutputPort<MutablePair<Message, MutablePair<Long, Integer>>> outputPort = new DefaultOutputPort<>();
+  public final transient DefaultOutputPort<MutablePair<String, MutablePair<Long, Integer>>> outputPort = new DefaultOutputPort<>();
 
   @Override
   public void beginWindow(long windowId)
@@ -137,7 +138,11 @@ public class KafkaInputOperator extends AbstractKafkaInputOperator<KafkaConsumer
 
   protected void emitTuple(KafkaMessage message)
   {
-    outputPort.emit(new MutablePair<>(message.getMsg(), new MutablePair<>(message.offSet, message.getKafkaPart().getPartitionId())));
+    ByteBuffer buffer = message.getMsg().payload();
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes);
+    String data = new String(bytes);
+    outputPort.emit(new MutablePair<>(data, new MutablePair<>(message.offSet, message.getKafkaPart().getPartitionId())));
   }
 
   @Override
